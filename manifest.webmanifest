@@ -1,7 +1,7 @@
 {
   "name": "HydroSense",
   "short_name": "HydroSense",
-  "description": "Offline-capable USB-UART dashboard for HydroSense telemetry.",
+  "description": "Offline-capable USB-UART dashboard for HydroSense telemetry and polling-rate control.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
