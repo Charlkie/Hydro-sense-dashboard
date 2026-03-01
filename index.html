@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>HydroSense USB Dashboard Prototype</title>
+  <style>
+    :root {
+      --bg: #09111f;
+      --panel: #11192d;
+      --panel-2: #18233d;
+      --border: rgba(255,255,255,0.08);
+      --text: #eef4ff;
+      --muted: #a7b4d4;
+      --accent: #6ea8ff;
+      --good: #4ade80;
+      --warn: #fbbf24;
+      --bad: #fb7185;
+      --shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: linear-gradient(180deg, #08101c 0%, #0b1430 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    .app {
+      max-width: 540px;
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .title {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      margin: 0;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin-top: 4px;
+      line-height: 1.35;
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--bad);
+      box-shadow: 0 0 12px currentColor;
+      color: var(--bad);
+      display: inline-block;
+      flex: 0 0 auto;
+    }
+
+    .status-chip.serial .dot { background: var(--good); color: var(--good); }
+    .status-chip.mock .dot { background: var(--warn); color: var(--warn); }
+
+    .nav {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      padding: 8px;
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .nav button {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 12px;
+      padding: 10px 8px;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .nav button.active {
+      background: linear-gradient(180deg, #245dff 0%, #1d4ed8 100%);
+      color: white;
+      border-color: rgba(255,255,255,0.12);
+    }
+
+    .screen { display: none; flex-direction: column; gap: 12px; }
+    .screen.active { display: flex; }
+
+    .panel {
+      background: rgba(17,25,45,0.84);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .panel h2 {
+      margin: 0 0 10px 0;
+      font-size: 0.95rem;
+      letter-spacing: 0.01em;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
+    .stack { display: flex; flex-direction: column; gap: 10px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1 1 180px;
+      min-width: 0;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 0.77rem;
+    }
+
+    input, select, button {
+      font: inherit;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      min-width: 0;
+    }
+
+    input, select { padding: 10px 12px; }
+
+    button.action {
+      padding: 11px 12px;
+      cursor: pointer;
+      transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+      background: rgba(255,255,255,0.03);
+    }
+
+    button.action:hover:enabled {
+      transform: translateY(-1px);
+      background: var(--panel-2);
+      border-color: rgba(110,168,255,0.45);
+    }
+
+    button.action.primary {
+      background: linear-gradient(180deg, #245dff 0%, #1d4ed8 100%);
+      border-color: rgba(255,255,255,0.12);
+      color: white;
+    }
+
+    button.action.danger {
+      background: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%);
+      color: white;
+    }
+
+    button.action:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .metric-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%);
+      min-height: 110px;
+    }
+
+    .metric-name {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 10px;
+    }
+
+    .metric-value {
+      font-size: 1.7rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+      line-height: 1;
+    }
+
+    .metric-unit {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin-left: 6px;
+    }
+
+    .metric-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .stat-box {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .stat-label {
+      font-size: 0.74rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 0.98rem;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .chart-wrap {
+      width: 100%;
+      height: 240px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .log {
+      min-height: 260px;
+      max-height: 340px;
+      overflow: auto;
+      border-radius: 14px;
+      background: #08101d;
+      border: 1px solid var(--border);
+      padding: 10px;
+      white-space: pre-wrap;
+      font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.76rem;
+      line-height: 1.45;
+      color: #d0ddff;
+    }
+
+    .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill {
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.75rem;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .diag {
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      background: rgba(251, 191, 36, 0.08);
+      color: #fde68a;
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 0.78rem;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 380px) {
+      .metric-grid, .stats-grid { grid-template-columns: 1fr; }
+      .nav { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div>
+        <h1 class="title">HydroSense</h1>
+        <div class="subtitle">USB-UART dashboard prototype for a 5-inch screen. Primary path: Chromium Web Serial + your CSV telemetry.</div>
+      </div>
+      <div id="statusChip" class="status-chip"><span class="dot"></span><span id="statusText">Disconnected</span></div>
+    </div>
+
+    <div class="nav">
+      <button class="active" data-screen="connect">Connect</button>
+      <button data-screen="live">Live</button>
+      <button data-screen="plot">Plot</button>
+      <button data-screen="log">Log</button>
+    </div>
+
+    <section id="screen-connect" class="screen active">
+      <div class="panel stack">
+        <h2>Connect USB serial</h2>
+        <div class="muted">Plug the UART-to-USB adapter into the Pi/Ubuntu machine, open this app in a Chromium-based browser, then press Connect.</div>
+        <div class="row">
+          <div class="field">
+            <label for="baudRate">Baud rate</label>
+            <select id="baudRate">
+              <option value="57600">57600</option>
+              <option value="115200" selected>115200</option>
+              <option value="230400">230400</option>
+              <option value="460800">460800</option>
+              <option value="921600">921600</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="customBaud">Custom baud</label>
+            <input id="customBaud" type="number" inputmode="numeric" min="1" step="1" value="115200" disabled />
+          </div>
+        </div>
+        <div class="row">
+          <button id="connectBtn" class="action primary">Connect device</button>
+          <button id="disconnectBtn" class="action danger" disabled>Disconnect</button>
+          <button id="mockBtn" class="action">Start mock mode</button>
+        </div>
+        <div class="pill-row">
+          <div class="pill">Packets: <span id="packetCount">0</span></div>
+          <div class="pill">Transport: <span id="transportText">None</span></div>
+          <div class="pill">Device: <span id="endpointText">—</span></div>
+        </div>
+        <div class="diag" id="diagBox">Diagnostics will appear here if connect fails.</div>
+      </div>
+
+      <div class="panel stack">
+        <h2>Expected STM32 format</h2>
+        <div class="muted">The parser expects your existing CSV line format:</div>
+        <div class="log">pH,turbidity_NTU,temperature_C,do_mgL\r\n
+7.02,12.3,22.48,8.31</div>
+        <div class="muted">That maps to pH, NTU, temperature °C, dissolved oxygen mg/L.</div>
+      </div>
+    </section>
+
+    <section id="screen-live" class="screen">
+      <div class="panel stack">
+        <h2>Live telemetry</h2>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-name">pH</div>
+            <div class="metric-value"><span id="phValue">—</span><span class="metric-unit">pH</span></div>
+            <div class="metric-meta"><span id="phTrend">Waiting for data</span><span id="phTime">—</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-name">Turbidity</div>
+            <div class="metric-value"><span id="ntuValue">—</span><span class="metric-unit">NTU</span></div>
+            <div class="metric-meta"><span id="ntuTrend">Waiting for data</span><span id="ntuTime">—</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-name">Temperature</div>
+            <div class="metric-value"><span id="tempValue">—</span><span class="metric-unit">°C</span></div>
+            <div class="metric-meta"><span id="tempTrend">Waiting for data</span><span id="tempTime">—</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-name">Dissolved Oxygen</div>
+            <div class="metric-value"><span id="doValue">—</span><span class="metric-unit">mg/L</span></div>
+            <div class="metric-meta"><span id="doTrend">Waiting for data</span><span id="doTime">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel stack">
+        <h2>Snapshot</h2>
+        <div class="stats-grid">
+          <div class="stat-box"><div class="stat-label">Last timestamp</div><div class="stat-value" id="lastTimestamp">—</div></div>
+          <div class="stat-box"><div class="stat-label">Sample count</div><div class="stat-value" id="sampleCount">0</div></div>
+          <div class="stat-box"><div class="stat-label">Current transport</div><div class="stat-value" id="liveTransport">None</div></div>
+          <div class="stat-box"><div class="stat-label">Selected device</div><div class="stat-value" id="liveEndpoint">—</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-plot" class="screen">
+      <div class="panel stack">
+        <h2>Trend plot</h2>
+        <div class="row">
+          <div class="field">
+            <label for="plotMetric">Metric</label>
+            <select id="plotMetric">
+              <option value="ph">pH</option>
+              <option value="ntu">Turbidity</option>
+              <option value="temp_c">Temperature</option>
+              <option value="do_mgL">Dissolved oxygen</option>
+            </select>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="chartCanvas" width="500" height="240"></canvas>
+        </div>
+        <div class="muted">One plot per screen to stay readable on the 5-inch display.</div>
+      </div>
+    </section>
+
+    <section id="screen-log" class="screen">
+      <div class="panel stack">
+        <h2>Serial log</h2>
+        <div class="row">
+          <button id="clearLogBtn" class="action">Clear log</button>
+        </div>
+        <div id="logOutput" class="log"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      mode: 'disconnected',
+      port: null,
+      reader: null,
+      writer: null,
+      buffer: '',
+      keepReading: false,
+      mockInterval: null,
+      packetCount: 0,
+      samples: [],
+      maxSamples: 120,
+      current: { ph: null, ntu: null, temp_c: null, do_mgL: null, timestamp: null },
+      prev: { ph: null, ntu: null, temp_c: null, do_mgL: null },
+      endpoint: '—',
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const els = {
+      navButtons: [...document.querySelectorAll('.nav button')],
+      screens: [...document.querySelectorAll('.screen')],
+      statusChip: $('statusChip'),
+      statusText: $('statusText'),
+      baudRate: $('baudRate'),
+      customBaud: $('customBaud'),
+      connectBtn: $('connectBtn'),
+      disconnectBtn: $('disconnectBtn'),
+      mockBtn: $('mockBtn'),
+      packetCount: $('packetCount'),
+      transportText: $('transportText'),
+      endpointText: $('endpointText'),
+      liveTransport: $('liveTransport'),
+      liveEndpoint: $('liveEndpoint'),
+      sampleCount: $('sampleCount'),
+      lastTimestamp: $('lastTimestamp'),
+      phValue: $('phValue'),
+      ntuValue: $('ntuValue'),
+      tempValue: $('tempValue'),
+      doValue: $('doValue'),
+      phTrend: $('phTrend'),
+      ntuTrend: $('ntuTrend'),
+      tempTrend: $('tempTrend'),
+      doTrend: $('doTrend'),
+      phTime: $('phTime'),
+      ntuTime: $('ntuTime'),
+      tempTime: $('tempTime'),
+      doTime: $('doTime'),
+      plotMetric: $('plotMetric'),
+      chartCanvas: $('chartCanvas'),
+      clearLogBtn: $('clearLogBtn'),
+      logOutput: $('logOutput'),
+      diagBox: $('diagBox'),
+    };
+
+    function log(message, type = 'info') {
+      const ts = new Date().toLocaleTimeString();
+      const prefix = type === 'error' ? '[ERR]' : type === 'tx' ? '[TX]' : type === 'rx' ? '[RX]' : '[SYS]';
+      els.logOutput.textContent += `${ts} ${prefix} ${message}\n`;
+      els.logOutput.scrollTop = els.logOutput.scrollHeight;
+    }
+
+    function setDiag(message) {
+      els.diagBox.textContent = message;
+    }
+
+    function switchScreen(name) {
+      els.navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.screen === name));
+      els.screens.forEach(screen => screen.classList.toggle('active', screen.id === `screen-${name}`));
+    }
+
+    function setMode(mode, transportLabel = 'None', endpoint = '—') {
+      state.mode = mode;
+      state.endpoint = endpoint;
+      els.statusChip.className = 'status-chip';
+      if (mode === 'serial') els.statusChip.classList.add('serial');
+      if (mode === 'mock') els.statusChip.classList.add('mock');
+      els.statusText.textContent = mode === 'serial' ? 'USB Serial' : mode === 'mock' ? 'Mock Mode' : 'Disconnected';
+      els.transportText.textContent = transportLabel;
+      els.endpointText.textContent = endpoint;
+      els.liveTransport.textContent = transportLabel;
+      els.liveEndpoint.textContent = endpoint;
+      els.disconnectBtn.disabled = mode === 'disconnected';
+      els.mockBtn.textContent = mode === 'mock' ? 'Stop mock mode' : 'Start mock mode';
+    }
+
+    function updateBaudUi() {
+      els.customBaud.disabled = els.baudRate.value !== 'custom';
+    }
+
+    function getSelectedBaud() {
+      if (els.baudRate.value === 'custom') {
+        const n = Number(els.customBaud.value);
+        return Number.isFinite(n) && n > 0 ? Math.trunc(n) : NaN;
+      }
+      return Number(els.baudRate.value);
+    }
+
+    function resetData() {
+      state.samples = [];
+      state.packetCount = 0;
+      state.current = { ph: null, ntu: null, temp_c: null, do_mgL: null, timestamp: null };
+      state.prev = { ph: null, ntu: null, temp_c: null, do_mgL: null };
+      els.packetCount.textContent = '0';
+      els.sampleCount.textContent = '0';
+      els.lastTimestamp.textContent = '—';
+      updateCards();
+      drawChart();
+    }
+
+    function numberOrNull(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function formatTime(ts) {
+      if (!ts) return '—';
+      return new Date(ts).toLocaleTimeString();
+    }
+
+    function trendText(key, current) {
+      const prev = state.prev[key];
+      if (prev == null || current == null) return 'Waiting for trend';
+      const delta = current - prev;
+      if (Math.abs(delta) < 0.005) return 'Stable';
+      return delta > 0 ? `Rising ${delta.toFixed(3)}` : `Falling ${Math.abs(delta).toFixed(3)}`;
+    }
+
+    function setMetric(el, value, decimals = 2) {
+      el.textContent = value == null ? '—' : Number(value).toFixed(decimals);
+    }
+
+    function pushSample(sample) {
+      state.prev = { ...state.current };
+      state.current = {
+        ph: numberOrNull(sample.ph),
+        ntu: numberOrNull(sample.ntu),
+        temp_c: numberOrNull(sample.temp_c),
+        do_mgL: numberOrNull(sample.do_mgL),
+        timestamp: sample.timestamp || Date.now(),
+      };
+      state.samples.push({ ...state.current });
+      if (state.samples.length > state.maxSamples) state.samples.shift();
+      state.packetCount += 1;
+      els.packetCount.textContent = String(state.packetCount);
+      els.sampleCount.textContent = String(state.samples.length);
+      updateCards();
+      drawChart();
+    }
+
+    function updateCards() {
+      const c = state.current;
+      setMetric(els.phValue, c.ph, 2);
+      setMetric(els.ntuValue, c.ntu, 1);
+      setMetric(els.tempValue, c.temp_c, 2);
+      setMetric(els.doValue, c.do_mgL, 2);
+      els.phTrend.textContent = trendText('ph', c.ph);
+      els.ntuTrend.textContent = trendText('ntu', c.ntu);
+      els.tempTrend.textContent = trendText('temp_c', c.temp_c);
+      els.doTrend.textContent = trendText('do_mgL', c.do_mgL);
+      const ft = formatTime(c.timestamp);
+      els.phTime.textContent = ft;
+      els.ntuTime.textContent = ft;
+      els.tempTime.textContent = ft;
+      els.doTime.textContent = ft;
+      els.lastTimestamp.textContent = ft;
+    }
+
+    function parseCsvTelemetry(line) {
+      const parts = line.split(',').map(s => s.trim());
+      if (parts.length !== 4) return null;
+      const ph = numberOrNull(parts[0]);
+      const ntu = numberOrNull(parts[1]);
+      const temp_c = numberOrNull(parts[2]);
+      const do_mgL = numberOrNull(parts[3]);
+      if ([ph, ntu, temp_c, do_mgL].some(v => v == null)) return null;
+      return { ph, ntu, temp_c, do_mgL, timestamp: Date.now() };
+    }
+
+    function handleIncomingLine(line) {
+      log(line, 'rx');
+      const parsed = parseCsvTelemetry(line);
+      if (parsed) pushSample(parsed);
+    }
+
+    async function disconnectAll(silent = false) {
+      if (state.mockInterval) {
+        clearInterval(state.mockInterval);
+        state.mockInterval = null;
+      }
+      try {
+        state.keepReading = false;
+        if (state.reader) {
+          await state.reader.cancel();
+          state.reader.releaseLock();
+          state.reader = null;
+        }
+      } catch (err) {
+        log(`Reader cleanup warning: ${err.message}`, 'error');
+      }
+      try {
+        if (state.writer) {
+          state.writer.releaseLock();
+          state.writer = null;
+        }
+      } catch (err) {
+        log(`Writer cleanup warning: ${err.message}`, 'error');
+      }
+      try {
+        if (state.port) {
+          await state.port.close();
+          state.port = null;
+        }
+      } catch (err) {
+        log(`Port close warning: ${err.message}`, 'error');
+      }
+      state.buffer = '';
+      setMode('disconnected');
+      if (!silent) log('Disconnected.');
+    }
+
+    async function connectWebSerial() {
+      setDiag('Attempting Web Serial connection…');
+      if (!('serial' in navigator)) {
+        const msg = 'Web Serial API unsupported in this browser. Use Chromium/Chrome/Edge.';
+        setDiag(msg);
+        log(msg, 'error');
+        return;
+      }
+
+      const baud = getSelectedBaud();
+      if (!Number.isFinite(baud) || baud <= 0) {
+        const msg = 'Invalid baud rate.';
+        setDiag(msg);
+        log(msg, 'error');
+        return;
+      }
+
+      try {
+        await disconnectAll(true);
+        resetData();
+        log(`Opening port at ${baud} baud…`);
+        const port = await navigator.serial.requestPort();
+        state.port = port;
+        await state.port.open({ baudRate: baud });
+
+        const info = state.port.getInfo ? state.port.getInfo() : {};
+        const endpoint = `${info.usbVendorId ?? 'VID?'}:${info.usbProductId ?? 'PID?'}`;
+        setMode('serial', `Web Serial @ ${baud}`, endpoint);
+        setDiag(`Connected successfully at ${baud} baud.`);
+        log(`Opened USB serial at ${baud} baud.`);
+
+        state.keepReading = true;
+        if (state.port.readable) {
+          state.reader = state.port.readable.getReader();
+          readSerialLoop();
+        } else {
+          log('Port is open but not readable.', 'error');
+        }
+
+        if (state.port.writable) {
+          state.writer = state.port.writable.getWriter();
+        }
+      } catch (err) {
+        const msg = `Connect failed: ${err && err.message ? err.message : String(err)}`;
+        setDiag(msg);
+        log(msg, 'error');
+        await disconnectAll(true);
+      }
+    }
+
+    async function readSerialLoop() {
+      const decoder = new TextDecoder();
+      try {
+        while (state.keepReading && state.reader) {
+          const result = await state.reader.read();
+          const value = result.value;
+          const done = result.done;
+          if (done) break;
+          if (!value) continue;
+          state.buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = state.buffer.indexOf('\n')) >= 0) {
+            const line = state.buffer.slice(0, idx).replace(/\r/g, '').trim();
+            state.buffer = state.buffer.slice(idx + 1);
+            if (line) handleIncomingLine(line);
+          }
+        }
+      } catch (err) {
+        const msg = `Serial read stopped: ${err && err.message ? err.message : String(err)}`;
+        setDiag(msg);
+        log(msg, 'error');
+      }
+    }
+
+    async function toggleMock() {
+      if (state.mode === 'mock') {
+        await disconnectAll(true);
+        setDiag('Mock mode stopped.');
+        log('Mock mode stopped.');
+        return;
+      }
+      await disconnectAll(true);
+      resetData();
+      setMode('mock', 'Simulation', 'Simulated STM32');
+      setDiag('Mock mode started.');
+      log('Mock mode started.');
+      let t = 0;
+      state.mockInterval = setInterval(() => {
+        t += 1;
+        const ph = 6.95 + 0.06 * Math.sin(t / 9) + (Math.random() - 0.5) * 0.02;
+        const ntu = 11.7 + 1.2 * Math.sin(t / 8) + (Math.random() - 0.5) * 0.4;
+        const temp_c = 22.5 + 0.3 * Math.sin(t / 17) + (Math.random() - 0.5) * 0.05;
+        const do_mgL = 8.1 + 0.22 * Math.sin(t / 13) + (Math.random() - 0.5) * 0.06;
+        const line = `${ph.toFixed(2)},${ntu.toFixed(1)},${temp_c.toFixed(2)},${do_mgL.toFixed(2)}`;
+        handleIncomingLine(line);
+      }, 700);
+    }
+
+    function drawChart() {
+      const canvas = els.chartCanvas;
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      const metric = els.plotMetric.value;
+      const pad = 34;
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#0a1325';
+      ctx.fillRect(0, 0, width, height);
+
+      const plotted = state.samples.filter(s => s[metric] != null);
+      if (plotted.length < 2) {
+        ctx.fillStyle = '#a7b4d4';
+        ctx.font = '14px sans-serif';
+        ctx.fillText('Waiting for data…', 24, 36);
+        return;
+      }
+
+      let min = Math.min(...plotted.map(s => s[metric]));
+      let max = Math.max(...plotted.map(s => s[metric]));
+      if (min === max) { min -= 1; max += 1; }
+      const range = max - min;
+      min -= range * 0.1;
+      max += range * 0.1;
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        const y = pad + (i / 3) * (height - pad * 2);
+        ctx.beginPath();
+        ctx.moveTo(pad, y);
+        ctx.lineTo(width - pad, y);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+      ctx.beginPath();
+      ctx.moveTo(pad, pad / 2);
+      ctx.lineTo(pad, height - pad);
+      ctx.lineTo(width - pad, height - pad);
+      ctx.stroke();
+
+      ctx.fillStyle = '#cfd9ff';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(max.toFixed(2), 6, pad + 4);
+      ctx.fillText(min.toFixed(2), 6, height - pad + 4);
+      ctx.fillText(metric, width - 88, 18);
+
+      ctx.strokeStyle = '#6ea8ff';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      plotted.forEach((s, i) => {
+        const x = pad + (i / (plotted.length - 1)) * (width - pad * 2);
+        const y = height - pad - ((s[metric] - min) / (max - min)) * (height - pad * 2);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      const last = plotted[plotted.length - 1];
+      const lx = width - pad;
+      const ly = height - pad - ((last[metric] - min) / (max - min)) * (height - pad * 2);
+      ctx.beginPath();
+      ctx.fillStyle = '#6ea8ff';
+      ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function init() {
+      els.navButtons.forEach(btn => btn.addEventListener('click', () => switchScreen(btn.dataset.screen)));
+      els.connectBtn.addEventListener('click', () => {
+        log('Connect button pressed.');
+        connectWebSerial();
+      });
+      els.disconnectBtn.addEventListener('click', () => disconnectAll(false));
+      els.mockBtn.addEventListener('click', toggleMock);
+      els.baudRate.addEventListener('change', updateBaudUi);
+      els.plotMetric.addEventListener('change', drawChart);
+      els.clearLogBtn.addEventListener('click', () => { els.logOutput.textContent = ''; });
+      window.addEventListener('beforeunload', () => { disconnectAll(true); });
+
+      updateBaudUi();
+      drawChart();
+      setDiag('Ready. Press Connect device or Start mock mode.');
+      log('HydroSense USB prototype ready.');
+      log('Expected CSV format: pH,NTU,temp_C,do_mgL');
+      log('Example: 7.02,12.3,22.48,8.31');
+      if (!('serial' in navigator)) {
+        const msg = 'Web Serial API unavailable in this browser. Use Chromium/Chrome/Edge.';
+        setDiag(msg);
+        log(msg, 'error');
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
