@@ -47,6 +47,7 @@ const els = {
   plotMetric: $('plotMetric'),
   chartCanvas: $('chartCanvas'),
   clearLogBtn: $('clearLogBtn'),
+  downloadCsvBtn: $('downloadCsvBtn'),
   logOutput: $('logOutput'),
   diagBox: $('diagBox'),
 };
@@ -92,6 +93,71 @@ function getSelectedBaud() {
     return Number.isFinite(n) && n > 0 ? Math.trunc(n) : NaN;
   }
   return Number(els.baudRate.value);
+}
+
+
+const STORAGE_KEYS = {
+  baudPreset: 'hydrosense.baudPreset',
+  customBaud: 'hydrosense.customBaud',
+};
+
+function saveBaudPreference() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.baudPreset, els.baudRate.value);
+    localStorage.setItem(STORAGE_KEYS.customBaud, String(els.customBaud.value || '57600'));
+  } catch (err) {
+    log(`Could not save baud preference: ${err.message}`, 'error');
+  }
+}
+
+function loadBaudPreference() {
+  try {
+    const savedPreset = localStorage.getItem(STORAGE_KEYS.baudPreset);
+    const savedCustom = localStorage.getItem(STORAGE_KEYS.customBaud);
+    if (savedPreset) els.baudRate.value = savedPreset;
+    else els.baudRate.value = '57600';
+    if (savedCustom) els.customBaud.value = savedCustom;
+    else els.customBaud.value = '57600';
+  } catch (err) {
+    els.baudRate.value = '57600';
+    els.customBaud.value = '57600';
+  }
+}
+
+function downloadCsvLog() {
+  const rows = [
+    ['timestamp_iso', 'timestamp_local', 'ph', 'ntu', 'temp_c', 'do_mgL']
+  ];
+  state.samples.forEach((s) => {
+    const ts = s.timestamp ? new Date(s.timestamp) : null;
+    rows.push([
+      ts ? ts.toISOString() : '',
+      ts ? ts.toLocaleString() : '',
+      s.ph ?? '',
+      s.ntu ?? '',
+      s.temp_c ?? '',
+      s.do_mgL ?? '',
+    ]);
+  });
+
+  const csv = rows.map((row) =>
+    row.map((value) => {
+      const str = String(value);
+      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    }).join(',')
+  ).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  a.href = url;
+  a.download = `hydrosense-log-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  log(`Downloaded CSV with ${state.samples.length} samples.`);
 }
 
 function resetData() {
@@ -241,6 +307,7 @@ async function connectWebSerial() {
     const port = await navigator.serial.requestPort();
     state.port = port;
     await state.port.open({ baudRate: baud });
+    saveBaudPreference();
 
     const info = state.port.getInfo ? state.port.getInfo() : {};
     const endpoint = `${info.usbVendorId ?? 'VID?'}:${info.usbProductId ?? 'PID?'}`;
@@ -403,15 +470,20 @@ function init() {
   });
   els.disconnectBtn.addEventListener('click', () => disconnectAll(false));
   els.mockBtn.addEventListener('click', toggleMock);
-  els.baudRate.addEventListener('change', updateBaudUi);
+  els.baudRate.addEventListener('change', () => { updateBaudUi(); saveBaudPreference(); });
+  els.customBaud.addEventListener('change', saveBaudPreference);
+  els.customBaud.addEventListener('input', saveBaudPreference);
   els.plotMetric.addEventListener('change', drawChart);
   els.clearLogBtn.addEventListener('click', () => { els.logOutput.textContent = ''; });
+  els.downloadCsvBtn.addEventListener('click', downloadCsvLog);
   window.addEventListener('beforeunload', () => { disconnectAll(true); });
 
+  loadBaudPreference();
   updateBaudUi();
   drawChart();
   setDiag('Ready. Press Connect device or Start mock mode.');
   log('HydroSense PWA ready.');
+  log(`Default baud preset: ${els.baudRate.value === 'custom' ? els.customBaud.value : els.baudRate.value}`);
   log('Expected CSV format: pH,NTU,temp_C,do_mgL');
   log('Example: 7.02,12.3,22.48,8.31');
   if (!('serial' in navigator)) {
